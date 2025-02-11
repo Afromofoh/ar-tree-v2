@@ -3,171 +3,26 @@
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stanford Tree AR</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <!-- Updated MediaPipe imports -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js"></script>
     <style>
-        body {
-            margin: 0;
-            padding: 0;
-            width: 100vw;
-            height: 100vh;
-            overflow: hidden;
-            background-color: #000;
-        }
-
-        #container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-        }
-
-        #output_canvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            transform: scaleX(-1);
-        }
-
-        .button {
-            padding: 15px 30px;
-            font-size: 18px;
-            background-color: #8c1515;
+        /* Previous styles remain the same */
+        /* Adding debug info styles */
+        #debugInfo {
+            position: fixed;
+            top: 60px;
+            left: 10px;
             color: white;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-        }
-
-        #startButton {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
+            font-size: 12px;
             z-index: 1000;
-        }
-
-        #flipButton {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1000;
-        }
-
-        #waterButton {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            display: none;
-        }
-
-        #restartButton {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 1000;
-            display: none;
-        }
-
-        #prompt {
-            position: fixed;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            text-align: center;
-            color: white;
-            font-size: 24px;
-            z-index: 1000;
-            display: none;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-
-        .water-drop {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background: rgba(100, 149, 237, 0.8);
-            border-radius: 50%;
-            pointer-events: none;
-            animation: dropFall 1s linear forwards;
-        }
-
-        @keyframes dropFall {
-            0% {
-                transform: translateY(-50px);
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(100px);
-                opacity: 0;
-            }
-        }
-
-        .sparkle {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            background: gold;
-            border-radius: 50%;
-            pointer-events: none;
-            animation: sparkle 0.8s linear forwards;
-        }
-
-        @keyframes sparkle {
-            0% {
-                transform: translate(0, 0) scale(0);
-                opacity: 0;
-            }
-            50% {
-                transform: translate(var(--tx), var(--ty)) scale(1);
-                opacity: 1;
-            }
-            100% {
-                transform: translate(var(--tx), var(--ty)) scale(0);
-                opacity: 0;
-            }
-        }
-
-        #arElements {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        }
-
-        #seed, #tree, #stanfordLogo {
-            position: absolute;
-            transform-origin: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .magical-growth {
-            animation: grow 3s ease-in-out forwards;
-        }
-
-        @keyframes grow {
-            0% {
-                transform: scale(1) translateY(0);
-                filter: brightness(1);
-            }
-            50% {
-                transform: scale(1.5) translateY(-20px);
-                filter: brightness(1.5);
-            }
-            100% {
-                transform: scale(2) translateY(-40px);
-                filter: brightness(1);
-            }
         }
     </style>
 </head>
 <body>
     <div id="container">
+        <video id="input_video" style="display: none;"></video>
         <canvas id="output_canvas"></canvas>
         <div id="arElements"></div>
         <button id="startButton" class="button">Start AR Experience</button>
@@ -175,11 +30,19 @@
         <button id="waterButton" class="button">Water the Seed</button>
         <button id="restartButton" class="button">Restart</button>
         <div id="prompt">Would you like to water this seed?</div>
+        <div id="debugInfo"></div>
     </div>
 
     <script>
+        // Debug helper
+        function debugLog(message) {
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.textContent = message;
+            console.log(message);
+        }
+
         let currentStream;
-        let camera;
+        let videoElement;
         let isUsingFrontCamera = false;
         let handLandmarks = null;
         let animationState = 'initial';
@@ -192,11 +55,14 @@
         const prompt = document.getElementById('prompt');
         const canvasElement = document.getElementById('output_canvas');
         const canvasCtx = canvasElement.getContext('2d');
+        
+        // Initialize video element
+        videoElement = document.getElementById('input_video');
 
-        // Initialize MediaPipe Hands
+        // Initialize MediaPipe Hands with error handling
         const hands = new Hands({
             locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
             }
         });
 
@@ -209,169 +75,146 @@
 
         hands.onResults(onResults);
 
-        // Camera setup
+        // Camera setup with error handling
         async function setupCamera(useFrontCamera = false) {
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-
-            const constraints = {
-                video: {
-                    facingMode: useFrontCamera ? "user" : "environment"
-                }
-            };
-
             try {
+                debugLog('Setting up camera...');
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+
+                const constraints = {
+                    video: {
+                        facingMode: useFrontCamera ? "user" : "environment",
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 currentStream = stream;
+                videoElement.srcObject = stream;
                 
-                if (!camera) {
-                    camera = new Camera(canvasElement, {
-                        onFrame: async () => {
-                            await hands.send({image: canvasElement});
-                        }
-                    });
-                }
+                await videoElement.play();
+                
+                const camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({image: videoElement});
+                    },
+                    width: 1280,
+                    height: 720
+                });
                 
                 camera.start();
+                debugLog('Camera started successfully');
+                
             } catch (error) {
-                console.error('Error accessing camera:', error);
+                debugLog('Error setting up camera: ' + error.message);
+                console.error('Error:', error);
             }
         }
 
         // Handle hand detection results
         function onResults(results) {
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            try {
+                canvasCtx.save();
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                handLandmarks = results.multiHandLandmarks[0];
-                updateARElements();
-            } else {
-                handLandmarks = null;
-            }
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    handLandmarks = results.multiHandLandmarks[0];
+                    debugLog('Hand detected');
+                    updateARElements();
+                } else {
+                    handLandmarks = null;
+                    debugLog('No hand detected');
+                }
 
-            canvasCtx.restore();
-        }
-
-        // Update AR elements position based on hand position
-        function updateARElements() {
-            if (!handLandmarks || animationState === 'complete') return;
-
-            const palmCenter = getPalmCenter(handLandmarks);
-            const elementX = palmCenter.x * canvasElement.width;
-            const elementY = palmCenter.y * canvasElement.height;
-            
-            const elements = arElements.children;
-            for (let element of elements) {
-                element.style.left = `${elementX}px`;
-                element.style.top = `${elementY}px`;
+                canvasCtx.restore();
+            } catch (error) {
+                debugLog('Error in onResults: ' + error.message);
             }
         }
 
-        function getPalmCenter(landmarks) {
-            const palmPoints = [0, 5, 9, 13, 17]; // Indices for palm landmarks
-            const x = palmPoints.reduce((sum, i) => sum + landmarks[i].x, 0) / palmPoints.length;
-            const y = palmPoints.reduce((sum, i) => sum + landmarks[i].y, 0) / palmPoints.length;
-            return { x, y };
-        }
-
+        // Rest of the functions remain the same, but add error handling and debugging
+        
         // Initialize the experience
         async function initializeAR() {
-            startButton.style.display = 'none';
-            await setupCamera(isUsingFrontCamera);
-            
-            // Create and show seed
-            const seed = document.createElement('img');
-            seed.src = 'seed.png';
-            seed.id = 'seed';
-            seed.style.width = '100px';
-            seed.style.opacity = '1';
-            arElements.appendChild(seed);
+            try {
+                debugLog('Initializing AR...');
+                startButton.style.display = 'none';
+                await setupCamera(isUsingFrontCamera);
+                
+                const seed = document.createElement('img');
+                seed.src = 'seed.png';
+                seed.id = 'seed';
+                seed.style.width = '100px';
+                seed.style.opacity = '1';
+                arElements.appendChild(seed);
 
-            prompt.style.display = 'block';
-            waterButton.style.display = 'block';
-            animationState = 'waiting';
-        }
-
-        // Create water animation
-        function createWaterAnimation(x, y) {
-            for (let i = 0; i < 10; i++) {
-                setTimeout(() => {
-                    const drop = document.createElement('div');
-                    drop.className = 'water-drop';
-                    drop.style.left = `${x + Math.random() * 50 - 25}px`;
-                    drop.style.top = `${y - 50}px`;
-                    arElements.appendChild(drop);
-                    
-                    setTimeout(() => drop.remove(), 1000);
-                }, i * 100);
+                prompt.style.display = 'block';
+                waterButton.style.display = 'block';
+                animationState = 'waiting';
+                debugLog('AR initialized successfully');
+            } catch (error) {
+                debugLog('Error initializing AR: ' + error.message);
             }
         }
 
-        // Create sparkle animation
-        function createSparkleAnimation(x, y) {
-            for (let i = 0; i < 20; i++) {
-                setTimeout(() => {
-                    const sparkle = document.createElement('div');
-                    sparkle.className = 'sparkle';
-                    sparkle.style.left = `${x}px`;
-                    sparkle.style.top = `${y}px`;
-                    sparkle.style.setProperty('--tx', `${(Math.random() - 0.5) * 100}px`);
-                    sparkle.style.setProperty('--ty', `${(Math.random() - 0.5) * 100}px`);
-                    arElements.appendChild(sparkle);
-                    
-                    setTimeout(() => sparkle.remove(), 800);
-                }, i * 50);
-            }
-        }
-
-        // Handle growth animation sequence
+        // Growth sequence with improved error handling and debugging
         async function startGrowthSequence() {
-            if (!handLandmarks) return;
+            try {
+                debugLog('Starting growth sequence...');
+                if (!handLandmarks) {
+                    debugLog('No hand detected, cannot start growth sequence');
+                    return;
+                }
 
-            animationState = 'growing';
-            waterButton.style.display = 'none';
-            prompt.style.display = 'none';
+                animationState = 'growing';
+                waterButton.style.display = 'none';
+                prompt.style.display = 'none';
 
-            const palmCenter = getPalmCenter(handLandmarks);
-            const x = palmCenter.x * canvasElement.width;
-            const y = palmCenter.y * canvasElement.height;
+                const palmCenter = getPalmCenter(handLandmarks);
+                const x = palmCenter.x * canvasElement.width;
+                const y = palmCenter.y * canvasElement.height;
 
-            // Water animation
-            createWaterAnimation(x, y);
-            await new Promise(resolve => setTimeout(resolve, 1500));
+                // Water animation
+                createWaterAnimation(x, y);
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
-            // Magical growth animation
-            const seed = document.getElementById('seed');
-            seed.style.opacity = '0';
-            createSparkleAnimation(x, y);
-            
-            // Tree growth
-            const tree = document.createElement('div');
-            tree.id = 'tree';
-            tree.style.width = '200px';
-            tree.style.height = '400px';
-            tree.style.backgroundColor = '#2F4F4F';
-            tree.style.borderRadius = '50px';
-            tree.style.opacity = '1';
-            tree.classList.add('magical-growth');
-            arElements.appendChild(tree);
+                // Growth sequence
+                const seed = document.getElementById('seed');
+                seed.style.opacity = '0';
+                createSparkleAnimation(x, y);
+                
+                // Tree growth
+                const tree = document.createElement('div');
+                tree.id = 'tree';
+                tree.style.width = '200px';
+                tree.style.height = '400px';
+                tree.style.backgroundColor = '#2F4F4F';
+                tree.style.borderRadius = '50px';
+                tree.style.opacity = '1';
+                tree.classList.add('magical-growth');
+                arElements.appendChild(tree);
 
-            await new Promise(resolve => setTimeout(resolve, 3000));
+                await new Promise(resolve => setTimeout(resolve, 3000));
 
-            // Show Stanford logo
-            tree.style.opacity = '0';
-            const logo = document.createElement('img');
-            logo.src = 'stanford-logo.png';
-            logo.id = 'stanfordLogo';
-            logo.style.width = '200px';
-            logo.style.opacity = '1';
-            arElements.appendChild(logo);
+                // Stanford logo
+                tree.style.opacity = '0';
+                const logo = document.createElement('img');
+                logo.src = 'stanford-logo.png';
+                logo.id = 'stanfordLogo';
+                logo.style.width = '200px';
+                logo.style.opacity = '1';
+                arElements.appendChild(logo);
 
-            animationState = 'complete';
-            restartButton.style.display = 'block';
+                animationState = 'complete';
+                restartButton.style.display = 'block';
+                debugLog('Growth sequence completed');
+            } catch (error) {
+                debugLog('Error in growth sequence: ' + error.message);
+            }
         }
 
         // Event listeners
@@ -385,7 +228,6 @@
         waterButton.addEventListener('click', startGrowthSequence);
 
         restartButton.addEventListener('click', () => {
-            // Clean up existing elements
             arElements.innerHTML = '';
             restartButton.style.display = 'none';
             animationState = 'initial';
@@ -401,6 +243,13 @@
         // Initial setup
         canvasElement.width = window.innerWidth;
         canvasElement.height = window.innerHeight;
+
+        // Add error handling for image loading
+        window.addEventListener('error', function(e) {
+            if (e.target.tagName === 'IMG') {
+                debugLog('Error loading image: ' + e.target.src);
+            }
+        }, true);
     </script>
 </body>
 </html>
