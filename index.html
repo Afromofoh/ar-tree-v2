@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Previous head section and styles remain the same until flipButton style -->
+<html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Stanford Tree AR</title>
@@ -7,19 +7,194 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
     <style>
-        /* Previous styles remain the same, but add/modify: */
+        body {
+            margin: 0;
+            padding: 0;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #000;
+        }
+
+        #container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+
+        #video {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        #output_canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .button {
+            padding: 15px 30px;
+            font-size: 18px;
+            background-color: #8c1515;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            z-index: 1000;
+        }
+
+        #startButton {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
         #flipButton {
             position: fixed;
             top: 20px;
             left: 20px;
             z-index: 1000;
+            display: none;
+        }
+
+        #waterButton {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+        }
+
+        #restartButton {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: none;
+        }
+
+        #prompt {
+            position: fixed;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 24px;
+            z-index: 1000;
+            display: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #debugInfo {
+            position: fixed;
+            top: 60px;
+            left: 10px;
+            color: white;
+            font-size: 16px;
+            z-index: 1000;
+            background-color: rgba(0,0,0,0.5);
+            padding: 5px;
+        }
+
+        #arElements {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        .water-drop {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: rgba(100, 149, 237, 0.8);
+            border-radius: 50%;
+            pointer-events: none;
+            animation: dropFall 1s linear forwards;
+        }
+
+        @keyframes dropFall {
+            0% {
+                transform: translateY(-50px);
+                opacity: 1;
+            }
+            100% {
+                transform: translateY(100px);
+                opacity: 0;
+            }
+        }
+
+        .sparkle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: radial-gradient(circle, #FFD700, transparent);
+            filter: blur(1px);
+            pointer-events: none;
+            animation: sparkle 0.8s linear forwards;
+        }
+
+        @keyframes sparkle {
+            0% {
+                transform: translate(0, 0) scale(0);
+                opacity: 0;
+            }
+            50% {
+                transform: translate(var(--tx), var(--ty)) scale(1);
+                opacity: 1;
+            }
+            100% {
+                transform: translate(var(--tx), var(--ty)) scale(0);
+                opacity: 0;
+            }
+        }
+
+        #seed {
+            position: absolute;
+            transform-origin: bottom center;
+            transition: opacity 0.3s ease;
+        }
+
+        #tree {
+            position: absolute;
+            transform-origin: bottom center;
+            background: linear-gradient(to bottom, #228B22, #006400);
+            border-radius: 50px 50px 10px 10px;
+            transition: opacity 0.3s ease;
         }
 
         #stanfordLogo {
             position: absolute;
             transform-origin: bottom center;
             transition: opacity 0.5s ease;
-            opacity: 0;
+        }
+
+        .magical-growth {
+            animation: grow 3s ease-in-out forwards;
+        }
+
+        @keyframes grow {
+            0% {
+                transform: scale(0.1) translateY(0);
+                opacity: 0;
+            }
+            20% {
+                transform: scale(0.2) translateY(0);
+                opacity: 1;
+            }
+            100% {
+                transform: scale(1) translateY(-50%);
+                opacity: 1;
+            }
         }
     </style>
 </head>
@@ -37,10 +212,44 @@
     </div>
 
     <script>
-        // Previous variable declarations remain the same
+        let currentStream;
+        let handLandmarks = null;
+        let animationState = 'initial';
         let isUsingFrontCamera = false;
+        
+        const video = document.getElementById('video');
+        const arElements = document.getElementById('arElements');
+        const startButton = document.getElementById('startButton');
+        const flipButton = document.getElementById('flipButton');
+        const waterButton = document.getElementById('waterButton');
+        const restartButton = document.getElementById('restartButton');
+        const prompt = document.getElementById('prompt');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
 
-        // Modified camera setup to remove forced rear camera
+        function log(message) {
+            const debugInfo = document.getElementById('debugInfo');
+            debugInfo.textContent = message;
+            console.log(message);
+        }
+
+        // Initialize MediaPipe Hands
+        const hands = new Hands({
+            locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
+            }
+        });
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults(onResults);
+
+        // Camera setup
         async function startCamera() {
             try {
                 log('Starting camera...');
@@ -52,8 +261,8 @@
                 };
                 
                 const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                currentStream = stream;
                 video.srcObject = stream;
-                await video.play();
                 
                 const camera = new Camera(video, {
                     onFrame: async () => {
@@ -64,7 +273,9 @@
                 });
                 
                 camera.start();
-                log('Camera started');
+                
+                startButton.style.display = 'none';
+                flipButton.style.display = 'block';
                 
                 // Show initial AR elements
                 const seed = document.createElement('img');
@@ -74,39 +285,106 @@
                 seed.style.opacity = '1';
                 arElements.appendChild(seed);
 
-                startButton.style.display = 'none';
                 prompt.style.display = 'block';
                 waterButton.style.display = 'block';
-                flipButton.style.display = 'block';
                 animationState = 'waiting';
+                
+                log('Camera started successfully');
             } catch (error) {
                 log('Camera error: ' + error.message);
             }
         }
 
-        // Add flip camera functionality
+        // Flip camera function
         async function flipCamera() {
-            isUsingFrontCamera = !isUsingFrontCamera;
-            if (currentStream) {
-                currentStream.getTracks().forEach(track => track.stop());
-            }
-
             try {
+                if (currentStream) {
+                    currentStream.getTracks().forEach(track => track.stop());
+                }
+                
+                isUsingFrontCamera = !isUsingFrontCamera;
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        facingMode: isUsingFrontCamera ? "user" : "environment",
+                        facingMode: isUsingFrontCamera ? 'user' : 'environment',
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
                 });
+                
                 currentStream = stream;
                 video.srcObject = stream;
+                log('Camera flipped');
             } catch (error) {
                 log('Error flipping camera: ' + error.message);
             }
         }
+        // Handle hand detection results
+        function onResults(results) {
+            try {
+                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-        // Modified growth sequence with delayed logo appearance
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    handLandmarks = results.multiHandLandmarks[0];
+                    updateARElements();
+                } else {
+                    handLandmarks = null;
+                }
+            } catch (error) {
+                log('Error in hand detection: ' + error.message);
+            }
+        }
+
+        // Update AR elements position
+        function updateARElements() {
+            if (!handLandmarks || animationState === 'complete') return;
+
+            const palmCenter = getPalmCenter(handLandmarks);
+            const elementX = palmCenter.x * canvasElement.width;
+            const elementY = palmCenter.y * canvasElement.height;
+            
+            const elements = arElements.children;
+            for (let element of elements) {
+                // Position elements so their bottom center is at palm center
+                element.style.left = `${elementX - element.offsetWidth / 2}px`;
+                element.style.top = `${elementY - element.offsetHeight}px`;
+            }
+        }
+
+        function getPalmCenter(landmarks) {
+            const palmPoints = [0, 5, 9, 13, 17];
+            const x = palmPoints.reduce((sum, i) => sum + landmarks[i].x, 0) / palmPoints.length;
+            const y = palmPoints.reduce((sum, i) => sum + landmarks[i].y, 0) / palmPoints.length;
+            return { x, y };
+        }
+
+        function createWaterAnimation(x, y) {
+            for (let i = 0; i < 10; i++) {
+                setTimeout(() => {
+                    const drop = document.createElement('div');
+                    drop.className = 'water-drop';
+                    drop.style.left = `${x + Math.random() * 50 - 25}px`;
+                    drop.style.top = `${y - 50}px`;
+                    arElements.appendChild(drop);
+                    setTimeout(() => drop.remove(), 1000);
+                }, i * 100);
+            }
+        }
+
+        function createSparkleAnimation(x, y) {
+            for (let i = 0; i < 20; i++) {
+                setTimeout(() => {
+                    const sparkle = document.createElement('div');
+                    sparkle.className = 'sparkle';
+                    sparkle.style.left = `${x}px`;
+                    sparkle.style.top = `${y}px`;
+                    sparkle.style.setProperty('--tx', `${(Math.random() - 0.5) * 100}px`);
+                    sparkle.style.setProperty('--ty', `${(Math.random() - 0.5) * 100}px`);
+                    arElements.appendChild(sparkle);
+                    setTimeout(() => sparkle.remove(), 800);
+                }, i * 50);
+            }
+        }
+
         async function startGrowthSequence() {
             try {
                 if (!handLandmarks) {
@@ -138,9 +416,6 @@
                 tree.style.width = '100px';
                 tree.style.height = '300px';
                 tree.style.opacity = '0';
-                tree.style.position = 'absolute';
-                tree.style.left = `${x - 50}px`;  // Center horizontally
-                tree.style.top = `${y - 300}px`;  // Position from bottom
                 arElements.appendChild(tree);
 
                 setTimeout(() => {
@@ -150,19 +425,23 @@
 
                 await new Promise(resolve => setTimeout(resolve, 3000));
 
-                // Create Stanford logo at the same position as the tree
+                // Stanford logo with same position as tree
                 const logo = document.createElement('img');
                 logo.src = 'stanford-logo.png';
                 logo.id = 'stanfordLogo';
                 logo.style.width = '200px';
-                logo.style.position = 'absolute';
-                logo.style.left = `${x - 100}px`;  // Center horizontally
-                logo.style.top = `${y - 200}px`;  // Position from bottom
+                logo.style.opacity = '0';
+                
+                // Position logo at the same spot as tree
+                const treeRect = tree.getBoundingClientRect();
+                logo.style.left = tree.style.left;
+                logo.style.top = tree.style.top;
+                
                 arElements.appendChild(logo);
 
-                // Fade out tree and fade in logo
-                tree.style.opacity = '0';
+                // Remove tree and show logo
                 setTimeout(() => {
+                    tree.remove();
                     logo.style.opacity = '1';
                 }, 500);
 
@@ -185,7 +464,15 @@
             startCamera();
         });
 
-        // Rest of the code remains the same
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvasElement.width = window.innerWidth;
+            canvasElement.height = window.innerHeight;
+        });
+
+        // Initial setup
+        canvasElement.width = window.innerWidth;
+        canvasElement.height = window.innerHeight;
     </script>
 </body>
 </html>
