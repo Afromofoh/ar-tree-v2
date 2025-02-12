@@ -57,8 +57,9 @@
 
         #flipButton {
             position: fixed;
-            top: 20px;
-            left: 20px;
+            top: 70px;
+            left: 50%;
+            transform: translateX(-50%);
             z-index: 1000;
             display: none;
         }
@@ -416,6 +417,8 @@
                 tree.style.width = '100px';
                 tree.style.height = '300px';
                 tree.style.opacity = '0';
+                tree.style.left = `${x - 50}px`;  // Center horizontally
+                tree.style.top = `${y - 300}px`;  // Position from bottom
                 arElements.appendChild(tree);
 
                 setTimeout(() => {
@@ -425,17 +428,16 @@
 
                 await new Promise(resolve => setTimeout(resolve, 3000));
 
-                // Stanford logo with same position as tree
+                // Stanford logo with improved positioning
                 const logo = document.createElement('img');
                 logo.src = 'stanford-logo.png';
                 logo.id = 'stanfordLogo';
                 logo.style.width = '200px';
                 logo.style.opacity = '0';
                 
-                // Position logo at the same spot as tree
-                const treeRect = tree.getBoundingClientRect();
-                logo.style.left = tree.style.left;
-                logo.style.top = tree.style.top;
+                // Center logo precisely on palm
+                logo.style.left = `${x - 100}px`;  // Center horizontally (half of width)
+                logo.style.top = `${y - 200}px`;   // Position from palm center
                 
                 arElements.appendChild(logo);
 
