@@ -104,7 +104,6 @@
             z-index: 100;
         }
 
-        /* Animation styles remain the same */
         .water-drop {
             position: absolute;
             width: 10px;
@@ -128,10 +127,10 @@
 
         .sparkle {
             position: absolute;
-            width: 4px;
-            height: 4px;
-            background: gold;
-            border-radius: 50%;
+            width: 6px;
+            height: 6px;
+            background: radial-gradient(circle, #FFD700, transparent);
+            filter: blur(1px);
             pointer-events: none;
             animation: sparkle 0.8s linear forwards;
         }
@@ -153,9 +152,13 @@
 
         #seed, #tree, #stanfordLogo {
             position: absolute;
-            transform-origin: center;
-            opacity: 0;
+            transform-origin: bottom center;
             transition: opacity 0.3s ease;
+        }
+
+        #tree {
+            background: linear-gradient(to bottom, #228B22, #006400);
+            border-radius: 50px 50px 10px 10px;
         }
 
         .magical-growth {
@@ -164,16 +167,16 @@
 
         @keyframes grow {
             0% {
-                transform: scale(1) translateY(0);
-                filter: brightness(1);
+                transform: scale(0.1) translateY(0);
+                opacity: 0;
             }
-            50% {
-                transform: scale(1.5) translateY(-20px);
-                filter: brightness(1.5);
+            20% {
+                transform: scale(0.2) translateY(0);
+                opacity: 1;
             }
             100% {
-                transform: scale(2) translateY(-40px);
-                filter: brightness(1);
+                transform: scale(1) translateY(-50%);
+                opacity: 1;
             }
         }
     </style>
@@ -228,15 +231,16 @@
         // Camera setup
         async function startCamera() {
             try {
-                log('Requesting camera permission...');
-                const stream = await navigator.mediaDevices.getUserMedia({
+                log('Requesting rear camera...');
+                const constraints = {
                     video: {
-                        facingMode: 'environment',
+                        facingMode: { exact: "environment" },
                         width: { ideal: 1280 },
                         height: { ideal: 720 }
                     }
-                });
+                };
                 
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
                 video.srcObject = stream;
                 await video.play();
                 
@@ -249,7 +253,7 @@
                 });
                 
                 camera.start();
-                log('Camera and hand tracking started');
+                log('Rear camera started');
                 
                 // Show initial AR elements
                 const seed = document.createElement('img');
@@ -265,8 +269,26 @@
                 animationState = 'waiting';
                 
             } catch (error) {
-                log('Error: ' + error.message);
-                console.error('Error:', error);
+                log('Camera error: ' + error.message);
+                // Fallback to any available camera if rear camera fails
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = stream;
+                    await video.play();
+                    
+                    const camera = new Camera(video, {
+                        onFrame: async () => {
+                            await hands.send({image: video});
+                        },
+                        width: 1280,
+                        height: 720
+                    });
+                    
+                    camera.start();
+                    log('Fallback camera started');
+                } catch (fallbackError) {
+                    log('Complete camera failure: ' + fallbackError.message);
+                }
             }
         }
 
@@ -298,8 +320,8 @@
             
             const elements = arElements.children;
             for (let element of elements) {
-                element.style.left = `${elementX}px`;
-                element.style.top = `${elementY}px`;
+                element.style.left = `${elementX - element.offsetWidth / 2}px`;
+                element.style.top = `${elementY - element.offsetHeight}px`;
             }
         }
 
@@ -366,13 +388,15 @@
                 // Tree growth
                 const tree = document.createElement('div');
                 tree.id = 'tree';
-                tree.style.width = '200px';
-                tree.style.height = '400px';
-                tree.style.backgroundColor = '#2F4F4F';
-                tree.style.borderRadius = '50px';
-                tree.style.opacity = '1';
-                tree.classList.add('magical-growth');
+                tree.style.width = '100px';
+                tree.style.height = '300px';
+                tree.style.opacity = '0';
                 arElements.appendChild(tree);
+
+                setTimeout(() => {
+                    tree.style.opacity = '1';
+                    tree.classList.add('magical-growth');
+                }, 100);
 
                 await new Promise(resolve => setTimeout(resolve, 3000));
 
@@ -382,8 +406,12 @@
                 logo.src = 'stanford-logo.png';
                 logo.id = 'stanfordLogo';
                 logo.style.width = '200px';
-                logo.style.opacity = '1';
+                logo.style.opacity = '0';
                 arElements.appendChild(logo);
+
+                setTimeout(() => {
+                    logo.style.opacity = '1';
+                }, 100);
 
                 animationState = 'complete';
                 restartButton.style.display = 'block';
