@@ -2,39 +2,25 @@
 <html>
 <head>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Stanford Tree AR</title>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3/drawing_utils.js" crossorigin="anonymous"></script>
+    <title>Camera Test</title>
     <style>
         body {
             margin: 0;
             padding: 0;
             width: 100vw;
             height: 100vh;
-            overflow: hidden;
             background-color: #000;
         }
-
         #container {
             position: relative;
             width: 100%;
             height: 100%;
-            background-color: #000;
         }
-
-        #input_video {
-            display: none;
-        }
-
-        #output_canvas {
-            position: absolute;
+        video {
             width: 100%;
             height: 100%;
-            transform: scaleX(-1);
-            background-color: #000;
+            object-fit: cover;
         }
-
         .button {
             padding: 15px 30px;
             font-size: 18px;
@@ -45,415 +31,59 @@
             cursor: pointer;
             z-index: 1000;
         }
-
         #startButton {
             position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
         }
-
-        #flipButton {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-        }
-
-        #waterButton {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: none;
-        }
-
-        #restartButton {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            display: none;
-        }
-
-        #prompt {
-            position: fixed;
-            top: 20px;
-            left: 0;
-            width: 100%;
-            text-align: center;
-            color: white;
-            font-size: 24px;
-            z-index: 1000;
-            display: none;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
-        }
-
         #debugInfo {
             position: fixed;
-            top: 60px;
+            top: 20px;
             left: 10px;
             color: white;
-            font-size: 12px;
+            font-size: 16px;
             z-index: 1000;
-            background-color: rgba(0, 0, 0, 0.5);
-            padding: 5px;
-            border-radius: 5px;
-        }
-
-        #arElements {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-            z-index: 100;
-        }
-
-        .water-drop {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            background: rgba(100, 149, 237, 0.8);
-            border-radius: 50%;
-            pointer-events: none;
-            animation: dropFall 1s linear forwards;
-        }
-
-        @keyframes dropFall {
-            0% {
-                transform: translateY(-50px);
-                opacity: 1;
-            }
-            100% {
-                transform: translateY(100px);
-                opacity: 0;
-            }
-        }
-
-        .sparkle {
-            position: absolute;
-            width: 4px;
-            height: 4px;
-            background: gold;
-            border-radius: 50%;
-            pointer-events: none;
-            animation: sparkle 0.8s linear forwards;
-        }
-
-        @keyframes sparkle {
-            0% {
-                transform: translate(0, 0) scale(0);
-                opacity: 0;
-            }
-            50% {
-                transform: translate(var(--tx), var(--ty)) scale(1);
-                opacity: 1;
-            }
-            100% {
-                transform: translate(var(--tx), var(--ty)) scale(0);
-                opacity: 0;
-            }
-        }
-
-        #seed, #tree, #stanfordLogo {
-            position: absolute;
-            transform-origin: center;
-            opacity: 0;
-            transition: opacity 0.3s ease;
-        }
-
-        .magical-growth {
-            animation: grow 3s ease-in-out forwards;
-        }
-
-        @keyframes grow {
-            0% {
-                transform: scale(1) translateY(0);
-                filter: brightness(1);
-            }
-            50% {
-                transform: scale(1.5) translateY(-20px);
-                filter: brightness(1.5);
-            }
-            100% {
-                transform: scale(2) translateY(-40px);
-                filter: brightness(1);
-            }
+            background-color: rgba(0,0,0,0.5);
+            padding: 10px;
         }
     </style>
 </head>
 <body>
     <div id="container">
-        <video id="input_video"></video>
-        <canvas id="output_canvas"></canvas>
-        <div id="arElements"></div>
-        <button id="startButton" class="button">Start AR Experience</button>
-        <button id="flipButton" class="button">Flip Camera</button>
-        <button id="waterButton" class="button">Water the Seed</button>
-        <button id="restartButton" class="button">Restart</button>
-        <div id="prompt">Would you like to water this seed?</div>
+        <video id="video" playsinline autoplay></video>
+        <button id="startButton" class="button">Start Camera</button>
         <div id="debugInfo"></div>
     </div>
 
     <script>
-        // Debug helper
-        function debugLog(message) {
-            const debugInfo = document.getElementById('debugInfo');
+        const video = document.getElementById('video');
+        const startButton = document.getElementById('startButton');
+        const debugInfo = document.getElementById('debugInfo');
+
+        function log(message) {
             debugInfo.textContent = message;
             console.log(message);
         }
 
-        let currentStream;
-        let videoElement;
-        let isUsingFrontCamera = false;
-        let handLandmarks = null;
-        let animationState = 'initial';
-        
-        const arElements = document.getElementById('arElements');
-        const startButton = document.getElementById('startButton');
-        const flipButton = document.getElementById('flipButton');
-        const waterButton = document.getElementById('waterButton');
-        const restartButton = document.getElementById('restartButton');
-        const prompt = document.getElementById('prompt');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-        
-        // Initialize video element
-        videoElement = document.getElementById('input_video');
-
-        // Initialize MediaPipe Hands with error handling
-        const hands = new Hands({
-            locateFile: (file) => {
-                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`;
-            }
-        });
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
-
-        hands.onResults(onResults);
-
-        // Camera setup with error handling
-        async function setupCamera(useFrontCamera = false) {
+        async function startCamera() {
             try {
-                debugLog('Setting up camera...');
-                if (currentStream) {
-                    currentStream.getTracks().forEach(track => track.stop());
-                }
-
-                const constraints = {
+                log('Requesting camera permission...');
+                const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
-                        facingMode: useFrontCamera ? "user" : "environment",
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
+                        facingMode: 'environment'
                     }
-                };
-
-                const stream = await navigator.mediaDevices.getUserMedia(constraints);
-                currentStream = stream;
-                videoElement.srcObject = stream;
-                
-                await videoElement.play();
-                
-                const camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await hands.send({image: videoElement});
-                    },
-                    width: 1280,
-                    height: 720
                 });
-                
-                camera.start();
-                debugLog('Camera started successfully');
-                
+                log('Camera permission granted');
+                video.srcObject = stream;
+                startButton.style.display = 'none';
             } catch (error) {
-                debugLog('Error setting up camera: ' + error.message);
+                log('Camera error: ' + error.message);
                 console.error('Error:', error);
             }
         }
 
-        // Handle hand detection results
-        function onResults(results) {
-            try {
-                canvasCtx.save();
-                canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-                canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-                    handLandmarks = results.multiHandLandmarks[0];
-                    debugLog('Hand detected');
-                    updateARElements();
-                } else {
-                    handLandmarks = null;
-                    debugLog('No hand detected');
-                }
-
-                canvasCtx.restore();
-            } catch (error) {
-                debugLog('Error in onResults: ' + error.message);
-            }
-        }
-
-        // Update AR elements position based on hand position
-        function updateARElements() {
-            if (!handLandmarks || animationState === 'complete') return;
-
-            const palmCenter = getPalmCenter(handLandmarks);
-            const elementX = palmCenter.x * canvasElement.width;
-            const elementY = palmCenter.y * canvasElement.height;
-            
-            const elements = arElements.children;
-            for (let element of elements) {
-                element.style.left = `${elementX}px`;
-                element.style.top = `${elementY}px`;
-            }
-        }
-
-        function getPalmCenter(landmarks) {
-            const palmPoints = [0, 5, 9, 13, 17]; // Indices for palm landmarks
-            const x = palmPoints.reduce((sum, i) => sum + landmarks[i].x, 0) / palmPoints.length;
-            const y = palmPoints.reduce((sum, i) => sum + landmarks[i].y, 0) / palmPoints.length;
-            return { x, y };
-        }
-
-        // Initialize the experience
-        async function initializeAR() {
-            try {
-                debugLog('Initializing AR...');
-                startButton.style.display = 'none';
-                await setupCamera(isUsingFrontCamera);
-                
-                const seed = document.createElement('img');
-                seed.src = 'seed.png';
-                seed.id = 'seed';
-                seed.style.width = '100px';
-                seed.style.opacity = '1';
-                arElements.appendChild(seed);
-
-                prompt.style.display = 'block';
-                waterButton.style.display = 'block';
-                animationState = 'waiting';
-                debugLog('AR initialized successfully');
-            } catch (error) {
-                debugLog('Error initializing AR: ' + error.message);
-            }
-        }
-
-        // Create water animation
-        function createWaterAnimation(x, y) {
-            for (let i = 0; i < 10; i++) {
-                setTimeout(() => {
-                    const drop = document.createElement('div');
-                    drop.className = 'water-drop';
-                    drop.style.left = `${x + Math.random() * 50 - 25}px`;
-                    drop.style.top = `${y - 50}px`;
-                    arElements.appendChild(drop);
-                    
-                    setTimeout(() => drop.remove(), 1000);
-                }, i * 100);
-            }
-        }
-
-        // Create sparkle animation
-        function createSparkleAnimation(x, y) {
-            for (let i = 0; i < 20; i++) {
-                setTimeout(() => {
-                    const sparkle = document.createElement('div');
-                    sparkle.className = 'sparkle';
-                    sparkle.style.left = `${x}px`;
-                    sparkle.style.top = `${y}px`;
-                    sparkle.style.setProperty('--tx', `${(Math.random() - 0.5) * 100}px`);
-                    sparkle.style.setProperty('--ty', `${(Math.random() - 0.5) * 100}px`);
-                    arElements.appendChild(sparkle);
-                    
-                    setTimeout(() => sparkle.remove(), 800);
-                }, i * 50);
-            }
-        }
-
-        // Growth sequence with improved error handling and debugging
-        async function startGrowthSequence() {
-            try {
-                debugLog('Starting growth sequence...');
-                if (!handLandmarks) {
-                    debugLog('No hand detected, cannot start growth sequence');
-                    return;
-                }
-
-                animationState = 'growing';
-                waterButton.style.display = 'none';
-                prompt.style.display = 'none';
-
-                const palmCenter = getPalmCenter(handLandmarks);
-                const x = palmCenter.x * canvasElement.width;
-                const y = palmCenter.y * canvasElement.height;
-
-                // Water animation
-                createWaterAnimation(x, y);
-                await new Promise(resolve => setTimeout(resolve, 1500));
-
-                // Growth sequence
-                const seed = document.getElementById('seed');
-                seed.style.opacity = '0';
-                createSparkleAnimation(x, y);
-                
-                // Tree growth
-                const tree = document.createElement('div');
-                tree.id = 'tree';
-                tree.style.width = '200px';
-                tree.style.height = '400px';
-                tree.style.backgroundColor = '#2F4F4F';
-                tree.style.borderRadius = '50px';
-                tree.style.opacity = '1';
-                tree.classList.add('magical-growth');
-                arElements.appendChild(tree);
-
-                await new Promise(resolve => setTimeout(resolve, 3000));
-
-                // Stanford logo
-                tree.style.opacity = '0';
-                const logo = document.createElement('img');
-                logo.src = 'stanford-logo.png';
-                logo.id = 'stanfordLogo';
-                logo.style.width = '200px';
-                logo.style.opacity = '1';
-                arElements.appendChild(logo);
-
-                animationState = 'complete';
-                restartButton.style.display = 'block';
-                debugLog('Growth sequence completed');
-            } catch (error) {
-                debugLog('Error in growth sequence: ' + error.message);
-            }
-        }
-
-        // Event listeners
-        startButton.addEventListener('click', initializeAR);
-        
-        flipButton.addEventListener('click', () => {
-            isUsingFrontCamera = !isUsingFrontCamera;
-            setupCamera(isUsingFrontCamera);
-        });
-
-        waterButton.addEventListener('click', startGrowthSequence);
-
-        restartButton.addEventListener('click', () => {
-            arElements.innerHTML = '';
-            restartButton.style.display = 'none';
-            animationState = 'initial';
-            initializeAR();
-        });
-
-        // Handle window resize
-        window.addEventListener('resize', () => {
-            canvasElement.width = window.innerWidth;
-            canvasElement.height = window.innerHeight;
-        });
-
-        // Initial setup
-        canvasElement.width = window.innerWidth;
-        canvasElement.height = window.innerHeight;
+        startButton.addEventListener('click', startCamera);
+    </script>
+</body>
+</html>
